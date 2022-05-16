@@ -21,7 +21,7 @@ const __dirname = Path.dirname(fileURLToPath(import.meta.url))
 import { createRequire } from 'module'
 const require = createRequire(import.meta.url)
 
-const pkijs = require("pkijs"); 
+const pkijs = require("pkijs");
 const { Crypto } = require("@peculiar/webcrypto");
 const crypto = new Crypto();
 global.crypto = crypto;
@@ -107,10 +107,10 @@ CASM.parseAndAssemble = function(file){
 }
 
 
-async function createNewSession(host, request, response, date, pgsg, is_imported=false){
+async function createNewSession(host, request, response, date, pgsg, cacheDir, is_imported=false){
     const suffix = is_imported ? "_imported" : ""
-    const sessDir = Path.join(__dirname, 'saved_sessions', date + "_" + host + suffix) 
-    fs.mkdirSync(sessDir, { recursive: true });   
+    const sessDir = Path.join(cacheDir || __dirname, 'saved_sessions', date + "_" + host + suffix)
+    fs.mkdirSync(sessDir, { recursive: true });
     fs.writeFileSync(Path.join(sessDir, "request"), request)
     fs.writeFileSync(Path.join(sessDir, "response"), response)
     fs.writeFileSync(Path.join(sessDir, date+".pgsg"), Buffer.from(JSON.stringify(pgsg)))
@@ -130,13 +130,12 @@ function showUsage(){
     process.exit(0)
 }
 
-async function setupNotary(){
+async function setupNotary({ pgsgOutDir = Path.join(__dirname, 'cache')}){
     const m = new Main();
     if (globals.useNotaryNoSandbox){
         return await m.queryNotaryNoSandbox(globals.defaultNotaryIP);
     } else {
-        const cacheDir = Path.join(__dirname, 'cache')
-        const tnPath = Path.join(cacheDir, 'trustedNotary')
+        const tnPath = Path.join(pgsgOutDir, 'trustedNotary')
         if (fs.existsSync(tnPath)) {
             // load notary from disk
             const obj = JSON.parse(fs.readFileSync(tnPath))
@@ -153,7 +152,7 @@ async function setupNotary(){
                 'IP': globals.defaultNotaryIP,
                 'pubkeyPEM': trustedPubkeyPEM,
                 'URLFetcherDoc': URLFetcherDoc
-              };
+            };
             // save the notary to disk
             const objSave = {
                 'IP': obj.IP,
@@ -168,20 +167,27 @@ async function setupNotary(){
 
 async function main (){
     const argv = process.argv
+
     if (argv[2] === 'notarize') {
-        if (argv.length !== 6 || (argv.length == 6 && argv[4] !== '--headers')){
+        if (argv.length < 6 || (argv.length >= 6 && argv[4] !== '--headers')){
             showUsage();
         }
 
-        const cacheDir = Path.join(__dirname, 'cache')
-        if (! fs.existsSync(cacheDir)) {fs.mkdirSync(cacheDir)};   
-        const psPath = Path.join(cacheDir, 'parsedCircuits')
-        const gbPath = Path.join(cacheDir, 'gatesBlob')
+        // @interface opts {
+        //   cacheDir: string;
+        // }
+        let opts = (argv.length === 7) ? JSON.parse(argv[6]) : {};
+
+        // TODO: check these paths and make sure it is working
+        const cacheDir = opts.cacheDir || Path.join(__dirname, 'cache');
+        if (! fs.existsSync(cacheDir)) {fs.mkdirSync(cacheDir)}
+        const psPath = opts.psPath || Path.join(cacheDir, 'parsedCircuits');
+        const gbPath = opts.gbPath || Path.join(cacheDir, 'gatesBlob');
 
         let circuits
         if (fs.existsSync(psPath)) {
             // load cached serialized circuits
-            circuits = JSON.parse(fs.readFileSync(psPath))            
+            circuits = JSON.parse(fs.readFileSync(psPath))
         } else {
             // run first time setup
             circuits = await new FirstTimeSetup().start();
@@ -193,14 +199,14 @@ async function main (){
         for (const [k, v] of Object.entries(circuits)) {
             circuits[k]['gatesBlob'] = b64decode(circuits[k]['gatesBlob'])
         }
-      
+
         // prepare root store certificates
         const rootStorePath = Path.join(__dirname, 'pagesigner', 'core', 'third-party', 'certs.txt')
         await parse_certs(fs.readFileSync(rootStorePath).toString());
 
         const server = argv[3]
-        const headersfile = Path.join(__dirname, argv[5])
-       
+        const headersfile = argv[5] // Path.join(__dirname, argv[5])
+
         // split into lines keeping the delimiter at the end of each line
         const lines = fs.readFileSync(headersfile).toString().split(/(?<=\r\n|\n)/);
         let headers = ''
@@ -215,14 +221,14 @@ async function main (){
             }
             else { // replace whatever delimiter is at the end with /r/n
                 headers += lines[i].split(/\r\n|\n/)[0]+ '\r\n'
-            } 
+            }
         }
         if (! blankLineWasFound){
             headers += '\r\n'
         }
 
         const m = new Main();
-        m.trustedOracle = await setupNotary();
+        m.trustedOracle = await setupNotary({pgsgOutDir: cacheDir});
         // start the actual notarization
         const session = new TLSNotarySession(
             server, 443, headers, m.trustedOracle, globals.sessionOptions, circuits, null);
@@ -234,12 +240,13 @@ async function main (){
         }
         const [host, request, response, date] = await m.verifyPgsgV6(obj);
         const serializedPgsg = m.serializePgsg(obj);
-        const sessDir = await createNewSession(host, request, response, date, serializedPgsg)
+        const sessDir = await createNewSession(host, request, response, date, serializedPgsg, cacheDir)
         console.log('Session was saved in ', sessDir)
         process.exit(0)
-    }  
+    }
 
     else if (argv[2] === 'verify') {
+        // TODO: add configurable path options
         if (argv.length !== 4){
             showUsage()
         }
@@ -248,10 +255,11 @@ async function main (){
         const m = new Main();
         const pgsg = m.deserializePgsg(serializedPgsg);
         // prepare root store certificates
+        // TODO: add configurable path options
         const rootStorePath = Path.join(__dirname, 'pagesigner', 'core', 'third-party', 'certs.txt')
         await parse_certs(fs.readFileSync(rootStorePath).toString());
         const [host, request, response, date] = await m.verifyPgsgV6(pgsg);
-        const sessDir = await createNewSession(host, request, response, date, serializedPgsg, true)
+        const sessDir = await createNewSession(host, request, response, date, serializedPgsg, null, true)
         console.log('The imported session was verified and saved in ', sessDir)
         process.exit(0)
     }
