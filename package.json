@@ -1,5 +1,17 @@
 {
+    "name": "pagesigner-cli",
+    "version": "1.0.0",
     "type": "module",
+    "description": "Run PageSigner from the command line",
+    "author": "tls-notary",
+    "main": "./pgsg-node.js",
+    "bin": {
+        "pgsg": "./pgsg-node.js"
+    },
+    "scripts": {
+        "test": "echo \"Error: no test specified\" && exit 1"
+    },
+    "license": "ISC",
     "dependencies": {
         "@peculiar/webcrypto": "1.2.3",
         "bigint-crypto-utils": "2.5.3",

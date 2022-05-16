@@ -1,3 +1,16 @@
+**NOTE: THIS IS A FORK OF https://github.com/tlsnotary/pagesigner-cli**
+
+**This module was not really configured to be included into a project, so I've added some to the package.json to
+make it easier to include as a github repo in an npm module, but I will not be publishing this to npm.**
+
+## For new releases
+
+- Check out the updated branch from https://github.com/tlsnotary/pagesigner-cli (add it as a git remote to make things easier) using the clone command below.
+- Remove all .gitmodule / .git files from any gitmodules that were included.
+- push to branch with current date and tag
+
+----
+
 //---------------------------------------------------------------------------------//
 Update May 2022: We are actively working on a TLSNotary implementation in Rust here:
 https://github.com/tlsnotary/tlsn/
