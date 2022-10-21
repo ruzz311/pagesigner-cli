@@ -100,6 +100,7 @@ global.Worker = mWorker
 
 // original parseAndAssemble is called with relative paths, we convert them into absolute paths 
 import './pagesigner/core/twopc/circuits/casmbundle.js'
+const CASM = global.CASM;
 CASM.parseAndAssembleOld = CASM.parseAndAssemble
 CASM.parseAndAssemble = function(file){
     const fullpath = Path.join(__dirname, 'pagesigner', 'core', 'twopc', 'circuits', file)
